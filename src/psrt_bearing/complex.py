@@ -9,7 +9,7 @@ Face = tuple[int, ...]
 
 
 def vietoris_rips_complex(points: Iterable[Point], radius: float, max_dim: int = 2) -> set[Face]:
-    """Build a Vietoris-Rips complex up to ``max_dim`` for a small point cloud."""
+    """Build a small Vietoris-Rips complex, truncated at ``max_dim``."""
     point_list = [tuple(point) for point in points]
     faces: set[Face] = {(index,) for index in range(len(point_list))}
 

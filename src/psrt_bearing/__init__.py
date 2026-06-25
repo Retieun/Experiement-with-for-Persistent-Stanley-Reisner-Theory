@@ -1,2 +1,1 @@
-"""Persistent Stanley-Reisner features for bearing-fault experiments."""
-
+"""Small PSRT feature experiments for bearing vibration windows."""

@@ -1,24 +1,22 @@
 # psrt-bearing
 
-`psrt-bearing` is a methods-demonstration project for applying persistent
-Stanley-Reisner theory to bearing-fault detection on the CWRU vibration
-benchmark.
+`psrt-bearing` is a small methods project around persistent Stanley-Reisner
+theory and bearing vibration data. The basic question is modest: can the
+invariants from Suwayyid and Wei's PSRT paper be made into a working,
+inspectable pipeline on a familiar fault-detection dataset?
 
-The pipeline is intended to:
+The pipeline slices CWRU bearing recordings into windows, turns each 1D signal
+window into a Takens delay point cloud, builds Vietoris-Rips complexes across a
+short radius grid, and then computes graded Betti-style features for a simple
+healthy-vs-faulty classifier.
 
-- slice CWRU bearing vibration recordings into labeled windows,
-- embed each 1D vibration window as a Takens delay-coordinate point cloud,
-- build Vietoris-Rips complexes across a small filtration grid,
-- compute persistent graded Betti-number features using Hochster's formula, and
-- train a simple healthy-vs-faulty classifier on those features.
-
-This project is not intended to claim state-of-the-art bearing-fault detection.
-The goal is a clean, reproducible implementation of the paper's method on a
-recognized real-world signal dataset.
+This is not a benchmark-chasing project. A good raw-signal model will almost
+certainly do better. The point here is to make the algebraic pipeline explicit
+enough that the tradeoffs are visible.
 
 ## Current Status
 
-Implemented:
+The current implementation has the core pieces in place:
 
 - exact graded Betti numbers via Hochster's formula over GF(2),
 - true two-radius persistent graded Betti features using inclusion-induced
@@ -33,34 +31,36 @@ Implemented:
 - a RandomForest binary classifier wrapper with source-recording grouped
   train/test splits and grouped cross-validation.
 
-The test suite includes the face list from the paper source for Example 2.2.
-The raw Hochster values are pinned directly; the paper's printed table appears
-to use a layout that is not fully consistent with its surrounding text for the
-later entries, so the fixture checks the mathematical `(i, j)` values.
+The test suite also pins the face list from Example 2.2 in the paper source.
+For that fixture I check the raw Hochster `(i, j)` values directly. The printed
+table in the paper seems to mix conventions in the later rows, so the test
+sticks to the formula rather than the formatting.
 
 ## Usage
 
-Install the package in editable mode:
+For local work I usually install it editable:
 
 ```bash
 python -m pip install -e ".[dev]"
 ```
 
-Run tests:
+Then run the tests:
 
 ```bash
 python -m pytest
 ```
 
-Run the binary CWRU demo against a directory of `.mat` files:
+To run the binary demo, point the script at a folder of CWRU `.mat` files:
 
 ```bash
 python scripts/run_binary.py path/to/cwru-mat-files
 ```
 
-By default the CLI uses the paper-faithful `psrt-pairs` feature method, which
-computes persistent graded Betti ranks over all `(birth_radius, death_radius)`
-pairs in a diameter-scaled radius grid. Other feature methods are available:
+By default the CLI uses `psrt-pairs`, which is the closest option here to the
+paper's persistent graded-Betti definition. It computes ranks over all
+`(birth_radius, death_radius)` pairs in a diameter-scaled radius grid.
+
+Other feature sets are available for comparison:
 
 ```bash
 python scripts/run_binary.py path/to/cwru-mat-files --method psrt-snapshot
@@ -68,38 +68,41 @@ python scripts/run_binary.py path/to/cwru-mat-files --method ph
 python scripts/run_binary.py path/to/cwru-mat-files --method fh
 ```
 
-The CLI reports the number of feature vectors, cache entries, and total
-Hochster subsets enumerated. Classification splits are grouped by source
-recording so windows from the same `.mat` file do not appear in both train and
-test sets. Use `--normalize` to standardize each vibration window before
-embedding, `--cache-dir .cache/features` to persist expensive feature vectors,
-and `--cv-folds 5` to also report grouped cross-validation means.
+The script reports feature counts, cache entries, and the number of Hochster
+subsets enumerated. Splits are grouped by source recording, so windows from the
+same `.mat` file do not land in both train and test.
 
-Save machine-readable experiment output with:
+Useful flags:
+
+- `--normalize` standardizes each vibration window before embedding.
+- `--cache-dir .cache/features` keeps expensive feature vectors on disk.
+- `--cv-folds 5` adds grouped cross-validation means.
+
+To save a run as JSON:
 
 ```bash
 python scripts/run_binary.py path/to/cwru-mat-files --metrics-json artifacts/run.json
 ```
 
-The demo notebook at `notebooks/01_demo.ipynb` shows the intended exploratory
-workflow: load CWRU windows, plot one healthy and one faulty Takens embedding,
-featurize with PSRT pairs, and train the grouped classifier.
+The notebook at `notebooks/01_demo.ipynb` is the more visual route. It loads a
+few CWRU windows, plots one healthy and one faulty Takens embedding, featurizes
+with PSRT pairs, and trains the grouped classifier.
 
 ## Caveats
 
-- Graded Betti features are computed on downsampled point clouds, so the
-  representation is coarse by construction.
-- Persistent homology may already separate the healthy and faulty classes. The
-  `--method ph` baseline is included to check that directly.
-- The Hochster-style computation enumerates vertex subsets, so point-cloud sizes
-  must remain small.
+- The point clouds are downsampled before the graded Betti computation. That
+  makes the representation coarse by design.
+- Plain persistent homology may already separate healthy and faulty windows.
+  The `--method ph` baseline is here so that question can be checked plainly.
+- Hochster's formula is a subset enumeration. Point-cloud sizes have to stay
+  small, or the run will get silly fast.
 
 ## Reference
 
-This implementation is based on:
+The main reference is:
 
 Faisal Suwayyid and Guo-Wei Wei. "Persistent Stanley-Reisner Theory."
 arXiv:2503.23482, 2025. <https://arxiv.org/abs/2503.23482>
 
-The PDF referenced for this project is available at
+Project notes and tests use the arXiv version:
 <https://arxiv.org/pdf/2503.23482>.

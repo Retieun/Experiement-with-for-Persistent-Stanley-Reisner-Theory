@@ -21,7 +21,7 @@ class PersistentBettiFeatures:
 def graded_betti_numbers(
     faces: Iterable[Iterable[int]], max_subset_card: int | None = None
 ) -> BettiTable:
-    """Compute graded Betti numbers by Hochster's formula over GF(2)."""
+    """Compute graded Betti numbers from Hochster's formula over GF(2)."""
     complex_faces = _close_faces(faces)
     vertices = sorted({vertex for face in complex_faces for vertex in face})
     subset_cap = len(vertices) if max_subset_card is None else min(max_subset_card, len(vertices))
@@ -48,7 +48,7 @@ def persistent_graded_betti_numbers(
     death_faces: Iterable[Iterable[int]],
     max_subset_card: int | None = None,
 ) -> BettiTable:
-    """Compute two-scale persistent graded Betti numbers via induced homology ranks."""
+    """Compute the two-scale version, using the induced homology image rank."""
     birth_complex = _close_faces(birth_faces)
     death_complex = _close_faces(death_faces)
     vertices = sorted({vertex for face in death_complex for vertex in face})
