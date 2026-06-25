@@ -88,6 +88,69 @@ The notebook at `notebooks/01_demo.ipynb` is the more visual route. It loads a
 few CWRU windows, plots one healthy and one faulty Takens embedding, featurizes
 with PSRT pairs, and trains the grouped classifier.
 
+## Mini CWRU Smoke Test
+
+I tested the pipeline on a tiny official CWRU subset with two normal recordings
+and two 0.007 inch inner-race fault recordings:
+
+```text
+Normal_0.mat
+Normal_1.mat
+IR007_0.mat
+IR007_1.mat
+```
+
+This is only a smoke test. It checks that loading, grouped splitting,
+featurization, caching, and classification work end to end. It is much too
+small to report as a serious benchmark.
+
+The fast persistent-homology baseline run was:
+
+```bash
+python scripts/run_binary.py E:\datasets\cwru-mini --windows-per-class 2 --max-points 8 --radius-count 3 --normalize --method ph --metrics-json artifacts\cwru-mini-ph.json
+```
+
+Result:
+
+```text
+feature_vectors: 4
+accuracy: 1.000
+f1: 1.000
+confusion_matrix: [[1, 0], [0, 1]]
+```
+
+The small PSRT-pairs run was:
+
+```bash
+python scripts/run_binary.py E:\datasets\cwru-mini --windows-per-class 2 --max-points 8 --radius-count 3 --normalize --method psrt-pairs --cache-dir artifacts\mini-cache --metrics-json artifacts\cwru-mini-psrt.json
+```
+
+Result:
+
+```text
+feature_vectors: 4
+total_subsets_enumerated: 3888
+accuracy: 1.000
+f1: 1.000
+confusion_matrix: [[1, 0], [0, 1]]
+```
+
+A slightly larger mini run used four windows per class:
+
+```bash
+python scripts/run_binary.py E:\datasets\cwru-mini --windows-per-class 4 --max-points 12 --radius-count 4 --normalize --method psrt-pairs --cache-dir artifacts\mini-cache-12 --metrics-json artifacts\cwru-mini-psrt-12.json
+```
+
+Result:
+
+```text
+feature_vectors: 8
+total_subsets_enumerated: 63440
+accuracy: 1.000
+f1: 1.000
+confusion_matrix: [[2, 0], [0, 2]]
+```
+
 ## Caveats
 
 - The point clouds are downsampled before the graded Betti computation. That
