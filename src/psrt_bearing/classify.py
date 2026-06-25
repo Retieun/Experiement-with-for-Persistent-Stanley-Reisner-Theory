@@ -44,6 +44,44 @@ def train_evaluate(
     }
 
 
+def grouped_cross_validate(
+    features: Sequence[Sequence[float]],
+    labels: Sequence[str],
+    groups: Sequence[str],
+    n_splits: int = 5,
+    random_state: int = 42,
+) -> dict[str, object]:
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import accuracy_score, f1_score
+    from sklearn.model_selection import StratifiedGroupKFold
+
+    feature_list = list(features)
+    label_list = list(labels)
+    group_list = list(groups)
+    splitter = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    folds: list[dict[str, float]] = []
+    for train_index, test_index in splitter.split(feature_list, label_list, group_list):
+        classifier = RandomForestClassifier(n_estimators=100, random_state=random_state)
+        x_train = [feature_list[index] for index in train_index]
+        y_train = [label_list[index] for index in train_index]
+        x_test = [feature_list[index] for index in test_index]
+        y_test = [label_list[index] for index in test_index]
+        classifier.fit(x_train, y_train)
+        predictions = classifier.predict(x_test)
+        folds.append(
+            {
+                "accuracy": float(accuracy_score(y_test, predictions)),
+                "f1": float(f1_score(y_test, predictions, pos_label="faulty", zero_division=0)),
+            }
+        )
+
+    return {
+        "accuracy_mean": sum(fold["accuracy"] for fold in folds) / len(folds),
+        "f1_mean": sum(fold["f1"] for fold in folds) / len(folds),
+        "folds": folds,
+    }
+
+
 def grouped_train_test_indices(
     labels: Sequence[str],
     groups: Sequence[str],

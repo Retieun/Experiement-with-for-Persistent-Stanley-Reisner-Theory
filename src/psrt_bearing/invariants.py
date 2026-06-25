@@ -111,6 +111,7 @@ def persistent_graded_betti_pair_features(
     point_list = [tuple(point) for point in points]
     radius_grid = tuple(radii)
     keys = tuple(betti_keys)
+    requested = _requested_dimensions_by_cardinality(keys)
     complexes = {
         radius: vietoris_rips_complex(point_list, radius=radius, max_dim=max_dim)
         for radius in radius_grid
@@ -120,10 +121,10 @@ def persistent_graded_betti_pair_features(
 
     for birth_index, birth_radius in enumerate(radius_grid):
         for death_radius in radius_grid[birth_index:]:
-            table = persistent_graded_betti_numbers(
+            table = _persistent_graded_betti_numbers_for_keys(
                 complexes[birth_radius],
                 complexes[death_radius],
-                max_subset_card=max_subset_card,
+                requested,
             )
             for key in keys:
                 values.append(table.get(key, 0))
@@ -137,6 +138,43 @@ def persistent_graded_betti_pair_features(
         labels=tuple(labels),
         subsets_enumerated=subsets_per_pair * pair_count,
     )
+
+
+def _requested_dimensions_by_cardinality(
+    betti_keys: tuple[tuple[int, int], ...]
+) -> dict[int, set[int]]:
+    requested: dict[int, set[int]] = defaultdict(set)
+    for homological_degree, cardinality in betti_keys:
+        dimension = cardinality - homological_degree - 1
+        if dimension < 0:
+            raise ValueError(f"Betti key {(homological_degree, cardinality)!r} implies negative homology dimension")
+        requested[cardinality].add(dimension)
+    return requested
+
+
+def _persistent_graded_betti_numbers_for_keys(
+    birth_faces: Iterable[Iterable[int]],
+    death_faces: Iterable[Iterable[int]],
+    requested: dict[int, set[int]],
+) -> BettiTable:
+    birth_complex = _close_faces(birth_faces)
+    death_complex = _close_faces(death_faces)
+    vertices = sorted({vertex for face in death_complex for vertex in face})
+    table: defaultdict[tuple[int, int], int] = defaultdict(int)
+
+    for cardinality, dimensions in requested.items():
+        if cardinality > len(vertices):
+            continue
+        for subset in combinations(vertices, cardinality):
+            birth_induced = {face for face in birth_complex if set(face).issubset(subset)}
+            death_induced = {face for face in death_complex if set(face).issubset(subset)}
+            for dimension in dimensions:
+                rank = _persistent_reduced_homology_rank(birth_induced, death_induced, dimension)
+                if rank == 0:
+                    continue
+                homological_degree = cardinality - dimension - 1
+                table[(homological_degree, cardinality)] += rank
+    return dict(table)
 
 
 def macaulay2_betti_table(table: BettiTable) -> list[list[int]]:
@@ -157,7 +195,7 @@ def _persistent_reduced_homology_rank(
     if not birth_faces or not death_faces:
         return 0
     if dimension == 0:
-        return _reduced_betti_by_dimension(death_faces).get(0, 0)
+        return _persistent_reduced_h0_rank(birth_faces, death_faces)
 
     birth_by_dim = _faces_by_dimension(birth_faces)
     death_by_dim = _faces_by_dimension(death_faces)
@@ -190,6 +228,49 @@ def _persistent_reduced_homology_rank(
     combined_rank = _gf2_rank([*mapped_cycles, *target_boundaries])
     intersection_rank = cycle_rank + boundary_rank - combined_rank
     return cycle_rank - intersection_rank
+
+
+def _persistent_reduced_h0_rank(birth_faces: set[Face], death_faces: set[Face]) -> int:
+    birth_vertices = sorted({face[0] for face in birth_faces if len(face) == 1})
+    death_vertices = sorted({face[0] for face in death_faces if len(face) == 1})
+    if not birth_vertices or not death_vertices:
+        return 0
+
+    birth_components = _component_labels(birth_faces, birth_vertices)
+    death_components = _component_labels(death_faces, death_vertices)
+    mapped_components = {
+        death_components[vertex]
+        for vertex in birth_vertices
+        if vertex in death_components
+    }
+    if not mapped_components:
+        return 0
+    return len(mapped_components) - 1
+
+
+def _component_labels(faces: set[Face], vertices: list[int]) -> dict[int, int]:
+    parent = {vertex: vertex for vertex in vertices}
+
+    def find(vertex: int) -> int:
+        while parent[vertex] != vertex:
+            parent[vertex] = parent[parent[vertex]]
+            vertex = parent[vertex]
+        return vertex
+
+    def union(left: int, right: int) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
+    vertex_set = set(vertices)
+    for face in faces:
+        if len(face) == 2 and face[0] in vertex_set and face[1] in vertex_set:
+            union(face[0], face[1])
+
+    roots = {vertex: find(vertex) for vertex in vertices}
+    root_ids = {root: index for index, root in enumerate(sorted(set(roots.values())))}
+    return {vertex: root_ids[root] for vertex, root in roots.items()}
 
 
 def _faces_by_dimension(faces: set[Face]) -> dict[int, list[Face]]:

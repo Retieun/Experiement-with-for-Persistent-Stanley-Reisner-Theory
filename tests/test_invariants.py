@@ -104,6 +104,19 @@ def test_persistent_graded_betti_numbers_use_inclusion_induced_rank():
     assert table.get((1, 3), 0) == 0
 
 
+def test_persistent_graded_betti_numbers_compute_h0_image_rank_for_changing_vertices():
+    birth_faces = {(0,), (1,)}
+    death_faces = {(0,), (1,), (2,)}
+
+    table = persistent_graded_betti_numbers(
+        birth_faces,
+        death_faces,
+        max_subset_card=2,
+    )
+
+    assert table.get((1, 2), 0) == 1
+
+
 def test_persistent_graded_betti_pair_features_flatten_birth_death_grid():
     points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
 
@@ -121,6 +134,19 @@ def test_persistent_graded_betti_pair_features_flatten_birth_death_grid():
         "r=1.1->1.5:beta_2_4",
         "r=1.5->1.5:beta_2_4",
     )
+
+
+def test_persistent_graded_betti_pair_features_reject_negative_homology_keys():
+    try:
+        persistent_graded_betti_pair_features(
+            [(0.0,), (1.0,)],
+            radii=[1.0],
+            betti_keys=[(3, 1)],
+        )
+    except ValueError as error:
+        assert "negative homology" in str(error)
+    else:
+        raise AssertionError("expected impossible Betti key to be rejected")
 
 
 def test_macaulay2_betti_table_uses_row_as_internal_minus_homological_degree():

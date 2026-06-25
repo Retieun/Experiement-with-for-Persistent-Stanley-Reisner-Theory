@@ -6,11 +6,47 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from psrt_bearing.classify import train_evaluate
+from psrt_bearing.classify import grouped_cross_validate, train_evaluate
 from psrt_bearing.data import load_cwru_mat, recording_id
 from psrt_bearing.embedding import estimate_tau
-from psrt_bearing.featurize import FeatureCache, featurize_window
+from psrt_bearing.featurize import DiskFeatureCache, FeatureCache, featurize_window
 from psrt_bearing.window import labeled_windows
+
+Window = tuple[float, ...]
+RecordingWindows = tuple[str, str, tuple[Window, ...]]
+LabeledSample = tuple[Window, str, str]
+
+
+def collect_balanced_windows(
+    recordings: list[RecordingWindows],
+    windows_per_class: int,
+) -> list[LabeledSample]:
+    by_label: dict[str, list[tuple[str, tuple[Window, ...]]]] = {"healthy": [], "faulty": []}
+    for source, label, windows in recordings:
+        if label in by_label and windows:
+            by_label[label].append((source, windows))
+
+    samples: list[LabeledSample] = []
+    for label, source_windows in by_label.items():
+        if len(source_windows) < 2:
+            raise ValueError(f"class {label!r} needs at least two recordings for grouped splitting")
+
+        selected: list[LabeledSample] = []
+        offsets = {source: 0 for source, _windows in source_windows}
+        while len(selected) < windows_per_class:
+            progressed = False
+            for source, windows in source_windows:
+                offset = offsets[source]
+                if offset < len(windows):
+                    selected.append((windows[offset], label, source))
+                    offsets[source] = offset + 1
+                    progressed = True
+                    if len(selected) == windows_per_class:
+                        break
+            if not progressed:
+                break
+        samples.extend(selected)
+    return samples
 
 
 def main() -> None:
@@ -28,29 +64,25 @@ def main() -> None:
         default="psrt-pairs",
     )
     parser.add_argument("--radius-count", type=int, default=6)
+    parser.add_argument("--normalize", action="store_true")
+    parser.add_argument("--cache-dir", type=Path)
+    parser.add_argument("--cv-folds", type=int, default=0)
     args = parser.parse_args()
 
-    windows_by_label: dict[str, list[tuple[tuple[float, ...], str]]] = {"healthy": [], "faulty": []}
+    recordings: list[RecordingWindows] = []
     for mat_path in sorted(args.data_dir.glob("*.mat")):
         signal, label = load_cwru_mat(mat_path)
-        if label not in windows_by_label:
-            continue
-        remaining = args.windows_per_class - len(windows_by_label[label])
-        if remaining <= 0:
+        if label not in {"healthy", "faulty"}:
             continue
         sliced = labeled_windows(signal, label=label, length=args.window_length)
         source = recording_id(mat_path)
-        windows_by_label[label].extend((window, source) for window, _ in sliced[:remaining])
+        recordings.append((source, label, tuple(window for window, _ in sliced)))
 
-    labeled = [
-        (window, label, source)
-        for label, windows_and_sources in windows_by_label.items()
-        for window, source in windows_and_sources[: args.windows_per_class]
-    ]
+    labeled = collect_balanced_windows(recordings, windows_per_class=args.windows_per_class)
     if len({label for _window, label, _source in labeled}) < 2:
         raise SystemExit("Need at least one healthy and one faulty window.")
 
-    cache = FeatureCache()
+    cache = DiskFeatureCache(args.cache_dir) if args.cache_dir else FeatureCache()
     features: list[tuple[int, ...]] = []
     labels: list[str] = []
     groups: list[str] = []
@@ -69,6 +101,7 @@ def main() -> None:
             cache=cache,
             method=args.method,
             radius_count=args.radius_count,
+            normalize=args.normalize,
         )
         features.append(result.values)
         labels.append(label)
@@ -78,12 +111,17 @@ def main() -> None:
 
     metrics = train_evaluate(features, labels, groups=groups)
     print(f"feature_method: {args.method}")
+    print(f"normalized: {args.normalize}")
     print(f"feature_vectors: {len(features)}")
     print(f"cache_entries: {len(cache)}")
     print(f"total_subsets_enumerated: {total_subsets}")
     print(f"accuracy: {metrics['accuracy']:.3f}")
     print(f"f1: {metrics['f1']:.3f}")
     print(f"confusion_matrix: {metrics['confusion_matrix']}")
+    if args.cv_folds:
+        cv = grouped_cross_validate(features, labels, groups, n_splits=args.cv_folds)
+        print(f"cv_accuracy_mean: {cv['accuracy_mean']:.3f}")
+        print(f"cv_f1_mean: {cv['f1_mean']:.3f}")
 
 
 if __name__ == "__main__":

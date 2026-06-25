@@ -1,4 +1,4 @@
-from psrt_bearing.classify import grouped_train_test_indices, train_evaluate
+from psrt_bearing.classify import grouped_cross_validate, grouped_train_test_indices, train_evaluate
 
 
 def test_train_evaluate_reports_basic_metrics():
@@ -46,3 +46,16 @@ def test_grouped_train_test_indices_require_two_sources_per_class():
         assert "two source groups" in str(error)
     else:
         raise AssertionError("expected grouped split to reject one source per class")
+
+
+def test_grouped_cross_validate_reports_fold_metrics():
+    result = grouped_cross_validate(
+        features=[(0.0,), (0.1,), (0.2,), (1.0,), (1.1,), (1.2,)],
+        labels=["healthy", "healthy", "healthy", "faulty", "faulty", "faulty"],
+        groups=["n1", "n2", "n3", "f1", "f2", "f3"],
+        n_splits=3,
+        random_state=0,
+    )
+
+    assert set(result) == {"accuracy_mean", "f1_mean", "folds"}
+    assert len(result["folds"]) == 3

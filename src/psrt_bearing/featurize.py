@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from hashlib import sha256
 from math import dist
+from pathlib import Path
 from typing import Iterable, Sequence
 
 from psrt_bearing.baselines import betti_curve_features
@@ -29,6 +31,36 @@ class FeatureCache:
         return len(self._items)
 
 
+class DiskFeatureCache:
+    def __init__(self, directory: str | Path) -> None:
+        self.directory = Path(directory)
+        self.directory.mkdir(parents=True, exist_ok=True)
+
+    def get(self, key: str) -> PersistentBettiFeatures | None:
+        path = self.directory / f"{key}.json"
+        if not path.exists():
+            return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return PersistentBettiFeatures(
+            values=tuple(payload["values"]),
+            labels=tuple(payload["labels"]),
+            subsets_enumerated=int(payload["subsets_enumerated"]),
+        )
+
+    def set(self, key: str, value: PersistentBettiFeatures) -> PersistentBettiFeatures:
+        path = self.directory / f"{key}.json"
+        payload = {
+            "values": list(value.values),
+            "labels": list(value.labels),
+            "subsets_enumerated": value.subsets_enumerated,
+        }
+        path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        return value
+
+    def __len__(self) -> int:
+        return len(list(self.directory.glob("*.json")))
+
+
 def featurize_window(
     window: Sequence[float],
     radii: Iterable[float] | None,
@@ -41,12 +73,14 @@ def featurize_window(
     cache: FeatureCache | None = None,
     method: str = "psrt-snapshot",
     radius_count: int = 6,
+    normalize: bool = False,
 ) -> PersistentBettiFeatures:
     if max_points > 24:
         raise ValueError("max_points must be <= 24 for Hochster subset enumeration")
 
+    values = _standardize(window) if normalize else tuple(float(value) for value in window)
     keys = tuple(betti_keys)
-    embedded = takens_embedding(window, dimension=embedding_dim, delay=delay)
+    embedded = takens_embedding(values, dimension=embedding_dim, delay=delay)
     sampled = farthest_point_sample(embedded, max_points=max_points)
     radius_grid = tuple(radii) if radii is not None else _diameter_radius_grid(sampled, radius_count)
     cache_key = _feature_key(
@@ -60,6 +94,7 @@ def featurize_window(
         max_subset_card,
         method,
         radius_count,
+        normalize,
     )
 
     if cache is not None:
@@ -109,6 +144,19 @@ def _diameter_radius_grid(points: Sequence[Sequence[float]], count: int) -> tupl
     return tuple(round(step * index, 12) for index in range(count))
 
 
+def _standardize(window: Sequence[float]) -> tuple[float, ...]:
+    values = tuple(float(value) for value in window)
+    if not values:
+        return values
+    mean = sum(values) / len(values)
+    centered = tuple(value - mean for value in values)
+    variance = sum(value * value for value in centered) / len(centered)
+    if variance == 0:
+        return centered
+    scale = variance**0.5
+    return tuple(value / scale for value in centered)
+
+
 def _feature_key(
     window: Sequence[float],
     radii: tuple[float, ...],
@@ -120,6 +168,7 @@ def _feature_key(
     max_subset_card: int | None,
     method: str,
     radius_count: int,
+    normalize: bool,
 ) -> str:
     payload = repr(
         (
@@ -133,6 +182,7 @@ def _feature_key(
             max_subset_card,
             method,
             radius_count,
+            normalize,
         )
     )
     return sha256(payload.encode("utf-8")).hexdigest()

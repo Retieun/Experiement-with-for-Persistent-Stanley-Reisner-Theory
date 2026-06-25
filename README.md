@@ -28,9 +28,10 @@ Implemented:
 - a persistent homology Betti-curve baseline,
 - small Vietoris-Rips complex construction for capped point clouds,
 - Takens delay embedding and deterministic farthest-point downsampling,
-- window slicing, CWRU `.mat` loading helpers, feature caching, and
+- optional per-window standardization before embedding,
+- window slicing, CWRU `.mat` loading helpers, memory/disk feature caching, and
 - a RandomForest binary classifier wrapper with source-recording grouped
-  train/test splits.
+  train/test splits and grouped cross-validation.
 
 The test suite includes the face list from the paper source for Example 2.2.
 The raw Hochster values are pinned directly; the paper's printed table appears
@@ -70,7 +71,9 @@ python scripts/run_binary.py path/to/cwru-mat-files --method fh
 The CLI reports the number of feature vectors, cache entries, and total
 Hochster subsets enumerated. Classification splits are grouped by source
 recording so windows from the same `.mat` file do not appear in both train and
-test sets.
+test sets. Use `--normalize` to standardize each vibration window before
+embedding, `--cache-dir .cache/features` to persist expensive feature vectors,
+and `--cv-folds 5` to also report grouped cross-validation means.
 
 ## Caveats
 

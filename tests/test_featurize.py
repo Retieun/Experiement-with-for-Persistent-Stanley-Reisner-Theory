@@ -1,4 +1,4 @@
-from psrt_bearing.featurize import FeatureCache, featurize_window
+from psrt_bearing.featurize import DiskFeatureCache, FeatureCache, featurize_window
 
 
 def test_featurize_window_returns_persistent_betti_values_and_uses_cache():
@@ -70,3 +70,57 @@ def test_featurize_window_supports_ph_baseline():
 
     assert result.values == (2, 0, 1, 0)
     assert result.labels == ("r=0.5:H_0", "r=0.5:H_1", "r=1.1:H_0", "r=1.1:H_1")
+
+
+def test_featurize_window_can_standardize_signal_before_embedding():
+    raw = featurize_window(
+        [10.0, 20.0],
+        radii=[2.0],
+        betti_keys=[(1, 2)],
+        embedding_dim=1,
+        max_points=2,
+        max_dim=1,
+        method="ph",
+    )
+    normalized = featurize_window(
+        [10.0, 20.0],
+        radii=[2.0],
+        betti_keys=[(1, 2)],
+        embedding_dim=1,
+        max_points=2,
+        max_dim=1,
+        method="ph",
+        normalize=True,
+    )
+
+    assert raw.values == (2, 0)
+    assert normalized.values == (1, 0)
+
+
+def test_disk_feature_cache_reuses_serialized_features(tmp_path):
+    cache = DiskFeatureCache(tmp_path)
+    first = featurize_window(
+        [0.0, 1.0],
+        radii=[0.5],
+        betti_keys=[(1, 2)],
+        embedding_dim=1,
+        max_points=2,
+        max_dim=1,
+        method="ph",
+        cache=cache,
+    )
+
+    second = DiskFeatureCache(tmp_path)
+    cached = featurize_window(
+        [0.0, 1.0],
+        radii=[0.5],
+        betti_keys=[(1, 2)],
+        embedding_dim=1,
+        max_points=2,
+        max_dim=1,
+        method="ph",
+        cache=second,
+    )
+
+    assert cached == first
+    assert len(second) == 1
