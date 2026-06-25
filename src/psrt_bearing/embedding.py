@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from math import dist
+from pathlib import Path
 from typing import Iterable, Sequence
 
 Point = tuple[float, ...]
@@ -61,3 +62,42 @@ def estimate_tau(signal: Sequence[float], max_lag: int = 128) -> int:
         if numerator / denominator <= 0:
             return lag
     return 1
+
+
+def plot_embedding(
+    points: Iterable[Sequence[float]],
+    output_path: str | Path,
+    title: str | None = None,
+) -> Path:
+    point_list = [tuple(float(value) for value in point) for point in points]
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig = plt.figure(figsize=(5, 4))
+    if point_list and len(point_list[0]) >= 3:
+        axis = fig.add_subplot(111, projection="3d")
+        axis.scatter(
+            [point[0] for point in point_list],
+            [point[1] for point in point_list],
+            [point[2] for point in point_list],
+            s=14,
+        )
+        axis.set_zlabel("x(t+2tau)")
+    else:
+        axis = fig.add_subplot(111)
+        xs = [point[0] for point in point_list]
+        ys = [point[1] if len(point) > 1 else index for index, point in enumerate(point_list)]
+        axis.scatter(xs, ys, s=14)
+        axis.set_ylabel("x(t+tau)" if point_list and len(point_list[0]) > 1 else "index")
+    axis.set_xlabel("x(t)")
+    if title:
+        axis.set_title(title)
+    fig.tight_layout()
+    fig.savefig(output, dpi=160)
+    plt.close(fig)
+    return output

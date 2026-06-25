@@ -1,4 +1,4 @@
-from scripts.run_binary import collect_balanced_windows
+from scripts.run_binary import collect_balanced_windows, write_metrics_json
 
 
 def test_collect_balanced_windows_spreads_samples_across_recordings():
@@ -32,3 +32,21 @@ def test_collect_balanced_windows_requires_two_recordings_per_class():
         assert "at least two recordings" in str(error)
     else:
         raise AssertionError("expected one-recording class to be rejected")
+
+
+def test_write_metrics_json_records_parameters_and_metrics(tmp_path):
+    output = tmp_path / "metrics.json"
+
+    write_metrics_json(
+        output,
+        parameters={"method": "ph"},
+        metrics={"accuracy": 1.0, "f1": 1.0},
+        cv_metrics={"accuracy_mean": 0.5},
+        cache_entries=3,
+        total_subsets=12,
+        feature_vectors=4,
+    )
+
+    text = output.read_text(encoding="utf-8")
+    assert '"method": "ph"' in text
+    assert '"total_subsets_enumerated": 12' in text

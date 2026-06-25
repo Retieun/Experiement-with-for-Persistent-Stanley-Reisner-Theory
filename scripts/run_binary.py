@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -49,6 +51,28 @@ def collect_balanced_windows(
     return samples
 
 
+def write_metrics_json(
+    output_path: Path,
+    parameters: dict[str, Any],
+    metrics: dict[str, Any],
+    cv_metrics: dict[str, Any] | None,
+    cache_entries: int,
+    total_subsets: int,
+    feature_vectors: int,
+) -> Path:
+    payload = {
+        "parameters": parameters,
+        "metrics": metrics,
+        "cv_metrics": cv_metrics,
+        "cache_entries": cache_entries,
+        "total_subsets_enumerated": total_subsets,
+        "feature_vectors": feature_vectors,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return output_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the PSRT binary CWRU demo.")
     parser.add_argument("data_dir", type=Path, help="Directory containing CWRU .mat files.")
@@ -67,6 +91,7 @@ def main() -> None:
     parser.add_argument("--normalize", action="store_true")
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--cv-folds", type=int, default=0)
+    parser.add_argument("--metrics-json", type=Path)
     args = parser.parse_args()
 
     recordings: list[RecordingWindows] = []
@@ -118,10 +143,33 @@ def main() -> None:
     print(f"accuracy: {metrics['accuracy']:.3f}")
     print(f"f1: {metrics['f1']:.3f}")
     print(f"confusion_matrix: {metrics['confusion_matrix']}")
+    cv = None
     if args.cv_folds:
         cv = grouped_cross_validate(features, labels, groups, n_splits=args.cv_folds)
         print(f"cv_accuracy_mean: {cv['accuracy_mean']:.3f}")
         print(f"cv_f1_mean: {cv['f1_mean']:.3f}")
+    if args.metrics_json:
+        write_metrics_json(
+            args.metrics_json,
+            parameters={
+                "data_dir": str(args.data_dir),
+                "window_length": args.window_length,
+                "windows_per_class": args.windows_per_class,
+                "embedding_dim": args.embedding_dim,
+                "max_points": args.max_points,
+                "max_dim": args.max_dim,
+                "max_subset_card": args.max_subset_card,
+                "method": args.method,
+                "radius_count": args.radius_count,
+                "normalize": args.normalize,
+                "cv_folds": args.cv_folds,
+            },
+            metrics=metrics,
+            cv_metrics=cv,
+            cache_entries=len(cache),
+            total_subsets=total_subsets,
+            feature_vectors=len(features),
+        )
 
 
 if __name__ == "__main__":

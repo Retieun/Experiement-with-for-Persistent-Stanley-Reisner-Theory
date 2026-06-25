@@ -75,6 +75,16 @@ test sets. Use `--normalize` to standardize each vibration window before
 embedding, `--cache-dir .cache/features` to persist expensive feature vectors,
 and `--cv-folds 5` to also report grouped cross-validation means.
 
+Save machine-readable experiment output with:
+
+```bash
+python scripts/run_binary.py path/to/cwru-mat-files --metrics-json artifacts/run.json
+```
+
+The demo notebook at `notebooks/01_demo.ipynb` shows the intended exploratory
+workflow: load CWRU windows, plot one healthy and one faulty Takens embedding,
+featurize with PSRT pairs, and train the grouped classifier.
+
 ## Caveats
 
 - Graded Betti features are computed on downsampled point clouds, so the
