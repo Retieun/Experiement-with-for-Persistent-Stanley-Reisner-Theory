@@ -1,6 +1,8 @@
 from psrt_bearing.invariants import (
     graded_betti_numbers,
     macaulay2_betti_table,
+    persistent_graded_betti_numbers,
+    persistent_graded_betti_pair_features,
     persistent_graded_betti_features,
 )
 
@@ -24,6 +26,47 @@ def test_hollow_square_has_expected_betti_numbers():
     assert betti[(2, 4)] == 1
 
 
+def test_paper_example_2_2_face_list_has_expected_hochster_values():
+    faces = {
+        (0,),
+        (1,),
+        (2,),
+        (3,),
+        (4,),
+        (5,),
+        (0, 1),
+        (0, 2),
+        (0, 3),
+        (0, 4),
+        (1, 2),
+        (1, 3),
+        (1, 4),
+        (1, 5),
+        (2, 3),
+        (2, 5),
+        (0, 1, 2),
+        (0, 1, 3),
+        (0, 2, 3),
+        (1, 2, 3),
+    }
+
+    betti = graded_betti_numbers(faces)
+
+    assert betti == {
+        (0, 0): 1,
+        (1, 2): 5,
+        (1, 3): 2,
+        (1, 4): 1,
+        (2, 3): 6,
+        (2, 4): 6,
+        (2, 5): 2,
+        (3, 4): 2,
+        (3, 5): 6,
+        (3, 6): 1,
+        (4, 6): 2,
+    }
+
+
 def test_persistent_graded_betti_features_flatten_radius_grid():
     points = [(0.0,), (1.0,)]
 
@@ -38,6 +81,46 @@ def test_persistent_graded_betti_features_flatten_radius_grid():
     assert features.values == (1, 0)
     assert features.labels == ("r=0.5:beta_1_2", "r=1.1:beta_1_2")
     assert features.subsets_enumerated == 6
+
+
+def test_persistent_graded_betti_numbers_use_inclusion_induced_rank():
+    birth_faces = {
+        (0,),
+        (1,),
+        (2,),
+        (0, 1),
+        (0, 2),
+        (1, 2),
+    }
+    death_faces = birth_faces | {(0, 1, 2)}
+
+    table = persistent_graded_betti_numbers(
+        birth_faces,
+        death_faces,
+        max_subset_card=3,
+    )
+
+    assert graded_betti_numbers(birth_faces)[(1, 3)] == 1
+    assert table.get((1, 3), 0) == 0
+
+
+def test_persistent_graded_betti_pair_features_flatten_birth_death_grid():
+    points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+
+    features = persistent_graded_betti_pair_features(
+        points,
+        radii=[1.1, 1.5],
+        betti_keys=[(2, 4)],
+        max_dim=2,
+        max_subset_card=4,
+    )
+
+    assert features.values == (1, 0, 0)
+    assert features.labels == (
+        "r=1.1->1.1:beta_2_4",
+        "r=1.1->1.5:beta_2_4",
+        "r=1.5->1.5:beta_2_4",
+    )
 
 
 def test_macaulay2_betti_table_uses_row_as_internal_minus_homological_degree():

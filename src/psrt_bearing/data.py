@@ -13,6 +13,10 @@ def infer_cwru_label(path: str | Path) -> str:
     raise ValueError(f"cannot infer CWRU label from {path!s}")
 
 
+def recording_id(path: str | Path) -> str:
+    return Path(path).stem
+
+
 def extract_drive_end_signal(mat: dict[str, Any]) -> tuple[float, ...]:
     de_keys = sorted(key for key in mat if "DE_time" in key)
     if not de_keys:

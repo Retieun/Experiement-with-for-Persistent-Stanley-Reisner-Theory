@@ -1,4 +1,4 @@
-from psrt_bearing.data import extract_drive_end_signal, infer_cwru_label
+from psrt_bearing.data import extract_drive_end_signal, infer_cwru_label, recording_id
 
 
 def test_infer_cwru_label_from_filename():
@@ -12,3 +12,7 @@ def test_extract_drive_end_signal_prefers_de_channel():
     mat = {"X098_DE_time": [[1.0], [2.0], [3.0]], "X098_FE_time": [[9.0]]}
 
     assert extract_drive_end_signal(mat) == (1.0, 2.0, 3.0)
+
+
+def test_recording_id_uses_file_stem():
+    assert recording_id("Normal_0.mat") == "Normal_0"

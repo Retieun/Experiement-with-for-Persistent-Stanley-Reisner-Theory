@@ -43,6 +43,35 @@ def graded_betti_numbers(
     return dict(table)
 
 
+def persistent_graded_betti_numbers(
+    birth_faces: Iterable[Iterable[int]],
+    death_faces: Iterable[Iterable[int]],
+    max_subset_card: int | None = None,
+) -> BettiTable:
+    """Compute two-scale persistent graded Betti numbers via induced homology ranks."""
+    birth_complex = _close_faces(birth_faces)
+    death_complex = _close_faces(death_faces)
+    vertices = sorted({vertex for face in death_complex for vertex in face})
+    subset_cap = len(vertices) if max_subset_card is None else min(max_subset_card, len(vertices))
+
+    table: defaultdict[tuple[int, int], int] = defaultdict(int)
+    table[(0, 0)] = 1
+
+    for cardinality in range(1, subset_cap + 1):
+        for subset in combinations(vertices, cardinality):
+            birth_induced = {face for face in birth_complex if set(face).issubset(subset)}
+            death_induced = {face for face in death_complex if set(face).issubset(subset)}
+            for dimension in range(0, cardinality):
+                rank = _persistent_reduced_homology_rank(birth_induced, death_induced, dimension)
+                if rank == 0:
+                    continue
+                homological_degree = cardinality - dimension - 1
+                if homological_degree >= 0:
+                    table[(homological_degree, cardinality)] += rank
+
+    return dict(table)
+
+
 def persistent_graded_betti_features(
     points: Iterable[Point],
     radii: Iterable[float],
@@ -72,6 +101,44 @@ def persistent_graded_betti_features(
     )
 
 
+def persistent_graded_betti_pair_features(
+    points: Iterable[Point],
+    radii: Iterable[float],
+    betti_keys: Iterable[tuple[int, int]],
+    max_dim: int = 2,
+    max_subset_card: int | None = None,
+) -> PersistentBettiFeatures:
+    point_list = [tuple(point) for point in points]
+    radius_grid = tuple(radii)
+    keys = tuple(betti_keys)
+    complexes = {
+        radius: vietoris_rips_complex(point_list, radius=radius, max_dim=max_dim)
+        for radius in radius_grid
+    }
+    values: list[int] = []
+    labels: list[str] = []
+
+    for birth_index, birth_radius in enumerate(radius_grid):
+        for death_radius in radius_grid[birth_index:]:
+            table = persistent_graded_betti_numbers(
+                complexes[birth_radius],
+                complexes[death_radius],
+                max_subset_card=max_subset_card,
+            )
+            for key in keys:
+                values.append(table.get(key, 0))
+                labels.append(f"r={birth_radius}->{death_radius}:beta_{key[0]}_{key[1]}")
+
+    subset_cap = len(point_list) if max_subset_card is None else min(max_subset_card, len(point_list))
+    subsets_per_pair = sum(_n_choose_k(len(point_list), size) for size in range(1, subset_cap + 1))
+    pair_count = len(radius_grid) * (len(radius_grid) + 1) // 2
+    return PersistentBettiFeatures(
+        values=tuple(values),
+        labels=tuple(labels),
+        subsets_enumerated=subsets_per_pair * pair_count,
+    )
+
+
 def macaulay2_betti_table(table: BettiTable) -> list[list[int]]:
     if not table:
         return []
@@ -82,6 +149,54 @@ def macaulay2_betti_table(table: BettiTable) -> list[list[int]]:
     for (homological_degree, internal_degree), value in table.items():
         rows[internal_degree - homological_degree][homological_degree] = value
     return rows
+
+
+def _persistent_reduced_homology_rank(
+    birth_faces: set[Face], death_faces: set[Face], dimension: int
+) -> int:
+    if not birth_faces or not death_faces:
+        return 0
+    if dimension == 0:
+        return _reduced_betti_by_dimension(death_faces).get(0, 0)
+
+    birth_by_dim = _faces_by_dimension(birth_faces)
+    death_by_dim = _faces_by_dimension(death_faces)
+    birth_d_faces = sorted(birth_by_dim.get(dimension, []))
+    death_d_faces = sorted(death_by_dim.get(dimension, []))
+    if not birth_d_faces or not death_d_faces:
+        return 0
+
+    birth_boundary = _boundary_columns(
+        birth_d_faces,
+        sorted(birth_by_dim.get(dimension - 1, [])),
+    )
+    source_cycle_basis = _kernel_basis(birth_boundary, len(birth_d_faces))
+    if not source_cycle_basis:
+        return 0
+
+    target_index = {face: index for index, face in enumerate(death_d_faces)}
+    source_index = {face: index for index, face in enumerate(birth_d_faces)}
+    mapped_cycles = [
+        _map_vector_to_target(vector, birth_d_faces, source_index, target_index)
+        for vector in source_cycle_basis
+    ]
+    target_boundaries = _boundary_columns(
+        sorted(death_by_dim.get(dimension + 1, [])),
+        death_d_faces,
+    )
+
+    cycle_rank = _gf2_rank(mapped_cycles)
+    boundary_rank = _gf2_rank(target_boundaries)
+    combined_rank = _gf2_rank([*mapped_cycles, *target_boundaries])
+    intersection_rank = cycle_rank + boundary_rank - combined_rank
+    return cycle_rank - intersection_rank
+
+
+def _faces_by_dimension(faces: set[Face]) -> dict[int, list[Face]]:
+    grouped: defaultdict[int, list[Face]] = defaultdict(list)
+    for face in faces:
+        grouped[len(face) - 1].append(face)
+    return dict(grouped)
 
 
 def _close_faces(faces: Iterable[Iterable[int]]) -> set[Face]:
@@ -134,6 +249,72 @@ def _boundary_rank(domain_faces: list[Face], codomain_faces: list[Face]) -> int:
             columns.append(column)
 
     return _gf2_rank(columns)
+
+
+def _boundary_columns(domain_faces: list[Face], codomain_faces: list[Face]) -> list[int]:
+    if not domain_faces or not codomain_faces:
+        return []
+
+    row_index = {face: index for index, face in enumerate(sorted(codomain_faces))}
+    columns: list[int] = []
+    for face in sorted(domain_faces):
+        column = 0
+        for omitted in range(len(face)):
+            boundary_face = face[:omitted] + face[omitted + 1 :]
+            column ^= 1 << row_index[boundary_face]
+        columns.append(column)
+    return columns
+
+
+def _kernel_basis(columns: list[int], domain_dimension: int) -> list[int]:
+    rows = [0 for _ in range(max((column.bit_length() for column in columns), default=0))]
+    for column_index, column in enumerate(columns):
+        vector = column
+        while vector:
+            row = (vector & -vector).bit_length() - 1
+            rows[row] |= 1 << column_index
+            vector &= vector - 1
+
+    pivot_rows: dict[int, int] = {}
+    for raw_row in rows:
+        row = raw_row
+        while row:
+            pivot = (row & -row).bit_length() - 1
+            if pivot not in pivot_rows:
+                pivot_rows[pivot] = row
+                break
+            row ^= pivot_rows[pivot]
+
+    for pivot in sorted(pivot_rows, reverse=True):
+        row = pivot_rows[pivot]
+        for other_pivot, other_row in list(pivot_rows.items()):
+            if other_pivot != pivot and ((other_row >> pivot) & 1):
+                pivot_rows[other_pivot] = other_row ^ row
+
+    pivot_columns = set(pivot_rows)
+    basis: list[int] = []
+    for free_column in range(domain_dimension):
+        if free_column in pivot_columns:
+            continue
+        vector = 1 << free_column
+        for pivot, row in pivot_rows.items():
+            if (row >> free_column) & 1:
+                vector |= 1 << pivot
+        basis.append(vector)
+    return basis
+
+
+def _map_vector_to_target(
+    vector: int,
+    source_faces: list[Face],
+    source_index: dict[Face, int],
+    target_index: dict[Face, int],
+) -> int:
+    mapped = 0
+    for face in source_faces:
+        if (vector >> source_index[face]) & 1:
+            mapped |= 1 << target_index[face]
+    return mapped
 
 
 def _gf2_rank(columns: Iterable[int]) -> int:
