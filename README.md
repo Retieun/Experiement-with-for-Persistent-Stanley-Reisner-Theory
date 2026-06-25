@@ -14,6 +14,26 @@ This is not a benchmark-chasing project. A good raw-signal model will almost
 certainly do better. The point here is to make the algebraic pipeline explicit
 enough that the tradeoffs are visible.
 
+## Why I Made This
+
+I made this as a small implementation exercise after reading the PSRT paper. My
+goal was to see whether the persistent graded-Betti construction could be turned
+into a reproducible signal-processing pipeline on real vibration data.
+
+This is not an official implementation of the paper. I would be grateful for
+corrections, especially around whether the persistent graded-Betti computation
+matches the intended construction.
+
+## Limitations
+
+- This is prototype research code, not a polished package or benchmark suite.
+- The point clouds are aggressively downsampled before Hochster enumeration.
+- The reported CWRU numbers below are small-data checks, not publishable
+  performance claims.
+- The PH baseline here is a Betti-curve baseline from the same small Rips
+  machinery, not a full persistence-diagram comparison with a mature TDA
+  library.
+
 ## Current Status
 
 The current implementation has the core pieces in place:
@@ -56,8 +76,8 @@ To run the binary demo, point the script at a folder of CWRU `.mat` files:
 python scripts/run_binary.py path/to/cwru-mat-files
 ```
 
-By default the CLI uses `psrt-pairs`, which is the closest option here to the
-paper's persistent graded-Betti definition. It computes ranks over all
+By default the CLI uses `psrt-pairs`, an implementation attempt of the paper's
+two-scale persistent graded-Betti construction. It computes ranks over all
 `(birth_radius, death_radius)` pairs in a diameter-scaled radius grid.
 
 Other feature sets are available for comparison:
@@ -88,10 +108,14 @@ The notebook at `notebooks/01_demo.ipynb` is the more visual route. It loads a
 few CWRU windows, plots one healthy and one faulty Takens embedding, featurizes
 with PSRT pairs, and trains the grouped classifier.
 
-## Mini CWRU Smoke Test
+## Small CWRU Runs
 
-I tested the pipeline on a tiny official CWRU subset with two normal recordings
-and two 0.007 inch inner-race fault recordings:
+I tested the pipeline on two small official CWRU subsets. These runs are meant
+to catch obvious pipeline mistakes and give a rough feel for cost. They are not
+large enough to claim diagnostic performance.
+
+The first smoke-test subset used two normal recordings and two 0.007 inch
+inner-race fault recordings:
 
 ```text
 Normal_0.mat
@@ -99,10 +123,6 @@ Normal_1.mat
 IR007_0.mat
 IR007_1.mat
 ```
-
-This is only a smoke test. It checks that loading, grouped splitting,
-featurization, caching, and classification work end to end. It is much too
-small to report as a serious benchmark.
 
 The fast persistent-homology baseline run was:
 
@@ -151,7 +171,52 @@ f1: 1.000
 confusion_matrix: [[2, 0], [0, 2]]
 ```
 
-## Caveats
+I also ran a broader small subset with four normal files and twelve fault files
+across inner-race, ball, and outer-race faults:
+
+```text
+Normal_0.mat ... Normal_3.mat
+IR007_0.mat ... IR007_3.mat
+B007_0.mat ... B007_3.mat
+OR007@6_0.mat ... OR007@6_3.mat
+```
+
+Persistent-homology baseline:
+
+```bash
+python scripts/run_binary.py E:\datasets\cwru-share --windows-per-class 16 --max-points 8 --radius-count 3 --normalize --method ph --cv-folds 4 --metrics-json artifacts\cwru-share-ph.json
+```
+
+Result:
+
+```text
+feature_vectors: 32
+accuracy: 0.857
+f1: 0.857
+confusion_matrix: [[3, 1], [0, 3]]
+cv_accuracy_mean: 0.812
+cv_f1_mean: 0.799
+```
+
+PSRT-pairs run:
+
+```bash
+python scripts/run_binary.py E:\datasets\cwru-share --windows-per-class 12 --max-points 10 --radius-count 3 --normalize --method psrt-pairs --cv-folds 4 --cache-dir artifacts\share-cache-psrt --metrics-json artifacts\cwru-share-psrt.json
+```
+
+Result:
+
+```text
+feature_vectors: 24
+total_subsets_enumerated: 55440
+accuracy: 0.833
+f1: 0.800
+confusion_matrix: [[3, 0], [1, 2]]
+cv_accuracy_mean: 0.958
+cv_f1_mean: 0.950
+```
+
+## Remaining Caveats
 
 - The point clouds are downsampled before the graded Betti computation. That
   makes the representation coarse by design.
@@ -159,6 +224,17 @@ confusion_matrix: [[2, 0], [0, 2]]
   The `--method ph` baseline is here so that question can be checked plainly.
 - Hochster's formula is a subset enumeration. Point-cloud sizes have to stay
   small, or the run will get silly fast.
+
+## Note For Sharing
+
+If sharing this with the paper's authors, I would frame it as an independent
+prototype rather than a completed implementation:
+
+> I built this small demo after reading your Persistent Stanley-Reisner Theory
+> paper. It applies an implementation attempt of the persistent graded-Betti
+> construction to CWRU bearing vibration windows. I would be grateful for any
+> corrections, especially if I have misunderstood the persistent graded-Betti
+> or facet-persistence constructions.
 
 ## Reference
 
